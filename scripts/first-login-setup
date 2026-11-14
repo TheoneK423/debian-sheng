@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+test "$(/usr/bin/id -u)" = 0
+test -t 0
+test -f /var/lib/milinux/needs-password
+printf '\n请设置 debian 用户的密码。输入时不会显示字符。\n'
+printf 'Set a password for user debian. Typed characters are not displayed.\n\n'
+/usr/bin/passwd debian
+/usr/bin/rm /var/lib/milinux/needs-password
+/usr/bin/rm /etc/sudoers.d/milinux-initial-setup
+/usr/bin/rm /etc/xdg/autostart/milinux-initial-setup.desktop
+printf '\n密码已设置。日常 sudo 使用此密码；SSH 保持关闭。\n'
+printf 'Password set. Use it for sudo. SSH remains disabled.\n'

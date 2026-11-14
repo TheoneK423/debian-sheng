@@ -3,6 +3,10 @@
 # ============================================================================
 
 name: Build RootFS
+run-name: Milinux Trixie KDE preparation
+
+permissions:
+  contents: read
 
 on:
   workflow_dispatch:
@@ -654,11 +658,17 @@ jobs:
         uses: actions/checkout@v7
 
       - name: "Verify Arguments"
-        env:
-          ROOTFS_PASSWORD: ${{ secrets.ROOTFS_PASSWORD }}
         run: |
-          if [[ -z "$ROOTFS_PASSWORD" ]]; then
-            echo "::warning::ROOTFS_PASSWORD is not set; the image will use the default password 'password'."
+          if [[ "${{ inputs.distro_suite }}" != trixie || \
+                "${{ inputs.desktop }}" != 'KDE Plasma' || \
+                "${{ inputs.kernel_source }}" != prebuilt || \
+                "${{ inputs.boot_mode }}" != 'dual (linux)' || \
+                "${{ inputs.language }}" != zh_CN.UTF-8 || \
+                "${{ inputs.quiet_boot }}" != false || \
+                "${{ inputs.username }}" != debian || \
+                "${{ inputs.autologin }}" != true ]]; then
+            echo '::error::This preparation branch exports a fixed Trixie/KDE/Chinese/prebuilt configuration, starting from dual mode with quiet_boot=false.'
+            exit 1
           fi
           if [[ "${{ inputs.boot_mode }}" == "custom" ]]; then
             if [[ "${{ inputs.kernel_source }}" != "custom_build" ]]; then
@@ -712,7 +722,7 @@ jobs:
       - name: "Install Build Tools"
         run: |
           sudo apt-get update
-          sudo apt-get install -y debootstrap git curl
+          sudo apt-get install -y debootstrap git curl android-sdk-libsparse-utils zstd
           echo "✓ Build tools installed"
 
       # ----------------------------------------------------------------
@@ -722,7 +732,7 @@ jobs:
       - name: "[Prebuilt] Download Kernel"
         if: ${{ inputs.kernel_source != 'custom_build' }}
         run: |
-          LATEST_TAG=$(gh release list --repo ianchb/sm8550-mainline --limit 1 --json tagName -q '.[0].tagName')
+          LATEST_TAG=7.3.4
           echo "  Latest tag: $LATEST_TAG"
 
           BOOT_PATTERN="${{ steps.partition.outputs.boot_img_pattern }}"
@@ -736,6 +746,7 @@ jobs:
             --repo ianchb/sm8550-mainline \
             --pattern "linux-xiaomi-sheng*.deb" \
             --clobber
+          echo '9b396931f9a00486ebcf34b5f3e4d52e64bcf1c95a60e987fd92ecbb52cd3040  linux-xiaomi-sheng.deb' | sha256sum -c -
           echo "✓ Prebuilt kernel downloaded"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -804,6 +815,8 @@ jobs:
             --branch "${{ inputs.firmware_branch }}" \
             "${{ inputs.firmware_repo }}" \
             firmware-src
+          git -C firmware-src fetch --depth 1 origin 053da477a5c338ac28d7c1c869e8c3ff7ca24d11
+          git -C firmware-src checkout --detach FETCH_HEAD
           mkdir -p firmware-xiaomi-sheng/usr/lib/firmware
           cp -r firmware-src/* firmware-xiaomi-sheng/usr/lib/firmware/
           rm -rf firmware-src
@@ -820,7 +833,7 @@ jobs:
 
       - name: "Download xiaomi-mipps-auth"
         run: |
-          LATEST_TAG=$(gh release list --repo ianchb/xiaomi-mipps-auth --limit 1 --json tagName -q '.[0].tagName')
+          LATEST_TAG=0.21
           gh release download "$LATEST_TAG" \
             --repo ianchb/xiaomi-mipps-auth \
             --pattern "*.deb" \
@@ -839,7 +852,7 @@ jobs:
 
       - name: "Download xiaomi-charger-mode"
         run: |
-          LATEST_TAG=$(gh release list --repo ianchb/xiaomi-charger-mode --limit 1 --json tagName -q '.[0].tagName')
+          LATEST_TAG=0.20
           gh release download "$LATEST_TAG" \
             --repo ianchb/xiaomi-charger-mode \
             --pattern "*.deb" \
@@ -858,7 +871,7 @@ jobs:
 
       - name: "Download xiaomi-sheng-thp"
         run: |
-          LATEST_TAG=$(gh release list --repo ianchb/xiaomi-sheng-thp --limit 1 --json tagName -q '.[0].tagName')
+          LATEST_TAG=v0.3.9
           gh release download "$LATEST_TAG" \
             --repo ianchb/xiaomi-sheng-thp \
             --pattern "*.deb" \
@@ -875,7 +888,8 @@ jobs:
           retention-days: 3
           if-no-files-found: error
 
-      - name: "Download xiaomi-pen-status"
+      - name: "Download xiaomi-pen-status (disabled: Qt 6.10 binary on Trixie Qt 6.8)"
+        if: ${{ false }}
         run: |
           LATEST_TAG=$(gh release list --repo ianchb/xiaomi-pen-status --limit 1 --json tagName -q '.[0].tagName')
           gh release download "$LATEST_TAG" \
@@ -887,6 +901,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: "Upload xiaomi-pen-status"
+        if: ${{ false }}
         uses: actions/upload-artifact@v7
         with:
           name: xiaomi-pen-status-deb
@@ -896,7 +911,7 @@ jobs:
 
       - name: "Download xiaomi-sheng-fingerprint"
         run: |
-          LATEST_TAG=$(gh release list --repo ianchb/xiaomi-sheng-fingerprint --limit 1 --json tagName -q '.[0].tagName')
+          LATEST_TAG=v0.1.4
           gh release download "$LATEST_TAG" \
             --repo ianchb/xiaomi-sheng-fingerprint \
             --pattern "*.deb" \
@@ -915,7 +930,7 @@ jobs:
 
       - name: "Download xiaomi-sheng-keyboard-helper"
         run: |
-          LATEST_TAG=$(gh release list --repo ianchb/xiaomi-sheng-keyboard-helper --limit 1 --json tagName -q '.[0].tagName')
+          LATEST_TAG=v0.2.0
           gh release download "$LATEST_TAG" \
             --repo ianchb/xiaomi-sheng-keyboard-helper \
             --pattern "*.deb" \
@@ -1019,11 +1034,17 @@ jobs:
           echo "  Packages to install:"
           sudo ls -lah "$ROOTFS_MOUNT/tmp/"*.deb
 
-          sudo chroot "$ROOTFS_MOUNT" bash -c "
-            apt-get update
-            apt-get install -y /tmp/*.deb 2>&1 || apt-get install -f -y
-            rm /tmp/*.deb
-          "
+          sudo chroot "$ROOTFS_MOUNT" bash -euo pipefail <<'CHROOT'
+          apt-get update
+          apt-get install -y /tmp/*.deb
+          for package in linux-xiaomi-sheng firmware-xiaomi-sheng alsa-xiaomi-sheng \
+              xiaomi-sheng-thp xiaomi-sheng-fingerprint xiaomi-sheng-keyboard-helper \
+              xiaomi-mipps-auth xiaomi-charger-mode fastrpc libssc iio-sensor-proxy \
+              sheng-sensors sheng-devauth; do
+            test "$(dpkg-query -W -f='${db:Status-Status}' "$package")" = installed
+          done
+          rm /tmp/*.deb
+          CHROOT
           echo "✓ All .deb packages installed"
 
       # ----------------------------------------------------------------
@@ -1099,20 +1120,11 @@ jobs:
             "${{ inputs.username }}"
           echo "✓ User ${{ inputs.username }} created"
 
-      - name: "Set Passwords"
-        env:
-          ROOTFS_PASSWORD: ${{ secrets.ROOTFS_PASSWORD }}
+      - name: "Lock accounts until local first login setup"
         run: |
-          if [[ -z "$ROOTFS_PASSWORD" ]]; then
-            ROOTFS_PASSWORD="password"
-          else
-            echo "::add-mask::$ROOTFS_PASSWORD"
-          fi
-          printf '%s:%s\n' "${{ inputs.username }}" "$ROOTFS_PASSWORD" | \
-            sudo chroot "$ROOTFS_MOUNT" chpasswd
-          printf 'root:%s\n' "$ROOTFS_PASSWORD" | \
-            sudo chroot "$ROOTFS_MOUNT" chpasswd
-          echo "✓ Passwords set"
+          sudo chroot "$ROOTFS_MOUNT" passwd -l root
+          sudo chroot "$ROOTFS_MOUNT" passwd -l debian
+          echo '✓ Password logins locked; a local first-login setup will set the user password'
 
       # ----------------------------------------------------------------
       # Desktop Environment
@@ -1141,7 +1153,8 @@ jobs:
             "$PLASMA_PACKAGE" plasma-workspace plasma-nm \
             sddm konsole firefox-esr \
             dolphin kate \
-            pipewire-alsa
+            pipewire-alsa \
+            maliit-keyboard fcitx5 fcitx5-chinese-addons fonts-noto-cjk
           echo "✓ KDE Plasma installed"
 
       - name: "Install KDE Plasma Plymouth Settings"
@@ -1201,6 +1214,9 @@ jobs:
         run: |
           sudo chroot "$ROOTFS_MOUNT" systemctl enable NetworkManager
           echo "✓ NetworkManager enabled"
+
+      - name: "Configure local first-login password setup"
+        run: bash scripts/configure-first-login.sh
 
       # ----------------------------------------------------------------
       # Finalize & Unmount
@@ -1277,16 +1293,22 @@ jobs:
       # Upload Final Artifacts
       # ----------------------------------------------------------------
 
-      - name: "Upload RootFS Image"
+      - name: "Export compressed sparse images for both modes"
+        run: bash scripts/export-prepared-images.sh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Upload prepared Debian images"
         uses: actions/upload-artifact@v7
         with:
-          name: rootfs-${{ inputs.distro_suite }}-${{ inputs.desktop }}-${{ steps.partition.outputs.label }}
-          path: rootfs.img
+          name: milinux-trixie-kde-prepared
+          path: prepared-images/
           retention-days: 14
           if-no-files-found: error
-          compression-level: 1
+          compression-level: 0
 
       - name: "Upload Boot Image"
+        if: ${{ false }}
         uses: actions/upload-artifact@v7
         with:
           name: boot-${{ inputs.distro_suite }}-${{ inputs.desktop }}-${{ steps.partition.outputs.label }}

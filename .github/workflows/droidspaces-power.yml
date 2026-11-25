@@ -1,0 +1,53 @@
+name: Droidspaces power compatibility
+
+on:
+  push:
+    branches: [droidspaces-power-compat-20261125]
+    paths:
+      - .github/workflows/droidspaces-power.yml
+      - userspace_power_compat.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  userspace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: ravindu644/Droidspaces-OSS
+          ref: cdadb9eb5d0f86aacffff60776333e6f6b73a30a
+          path: userspace-work/source
+          persist-credentials: false
+      - name: Apply the single-function compatibility patch
+        run: python3 userspace_power_compat.py userspace-work/source
+      - name: Download and verify the upstream compiler
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir toolchains
+          curl -fL --retry 2 https://github.com/ravindu644/Droidspaces-OSS/releases/download/compilers-25843896720/aarch64-linux-musl-cross.tar.zst -o toolchains/compiler.tar.zst
+          echo '03ae51af722af0dcffea0fc9eefb872a2a4e0a59300b612b1bff8b716404a8a1  toolchains/compiler.tar.zst' | sha256sum -c -
+          tar -xf toolchains/compiler.tar.zst -C toolchains
+      - name: Compile the ARM64 backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          toolchains/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc --version
+          make -C userspace-work/source aarch64 MUSL_CROSS="$GITHUB_WORKSPACE/toolchains/aarch64-linux-musl-cross/bin" NPROC=4
+          cp userspace-work/source/output/droidspaces-aarch64 dist/userspace-power/droidspaces
+          cp userspace-work/source/src/android/android.c dist/userspace-power/android.c
+          cd dist/userspace-power
+          sha256sum droidspaces android.c build-info.json > sha256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: droidspaces-power-compat
+          path: dist/userspace-power/
+          if-no-files-found: error
+          retention-days: 14

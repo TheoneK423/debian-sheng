@@ -46,6 +46,7 @@ export KBUILD_BUILD_TIMESTAMP="Wed Jul 2 02:41:59 UTC 2025"
 make_args=(
     -C "$common" "O=$out" ARCH=arm64 LLVM=1 LLVM_IAS=1
     HOSTCC=clang HOSTCXX=clang++ HOSTLDFLAGS=-fuse-ld=lld
+    KCFLAGS=-D__ANDROID_COMMON_KERNEL__
 )
 make "${make_args[@]}" olddefconfig
 cp "$out/.config" "$dist/kernel.config"

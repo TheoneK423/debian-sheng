@@ -48,6 +48,7 @@ make_args=(
     HOSTCC=clang HOSTCXX=clang++ HOSTLDFLAGS=-fuse-ld=lld
 )
 make "${make_args[@]}" olddefconfig
+cp "$out/.config" "$dist/kernel.config"
 python3 "$inputs/verify_config.py" "$out/.config" "$dist/config-review.json"
 make "${make_args[@]}" "-j${KERNEL_JOBS:-4}" Image Image.gz modules
 

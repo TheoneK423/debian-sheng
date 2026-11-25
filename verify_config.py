@@ -31,7 +31,8 @@ for name in ["CGROUP_PIDS", "CFS_BANDWIDTH", "CFI_PERMISSIVE", "KSU", "KERNELSU"
     if after.get(f"CONFIG_{name}", "n") != "n":
         raise RuntimeError(f"Unexpected option: {name}")
 allowed = {
-    "CONFIG_SYSVIPC", "CONFIG_POSIX_MQUEUE", "CONFIG_POSIX_MQUEUE_SYSCTL",
+    "CONFIG_SYSVIPC", "CONFIG_SYSVIPC_COMPAT",
+    "CONFIG_POSIX_MQUEUE", "CONFIG_POSIX_MQUEUE_SYSCTL",
     "CONFIG_SYSVIPC_SYSCTL", "CONFIG_IPC_NS", "CONFIG_PID_NS", "CONFIG_DEVTMPFS",
     "CONFIG_USER_NS", "CONFIG_DEVTMPFS_MOUNT", "CONFIG_DEVTMPFS_SAFE",
     "CONFIG_SYSTEM_TRUSTED_KEYS", "CONFIG_UNUSED_KSYMS_WHITELIST",
@@ -43,14 +44,18 @@ differences = {
     if before.get(key, "n") != after.get(key, "n")
 }
 unexpected = sorted(set(differences) - allowed)
-if unexpected:
-    raise RuntimeError(f"Unexpected kernel options changed: {unexpected}")
 report = {
-    "status": "configuration_matches_reviewed_scope",
+    "status": (
+        "configuration_review_failed"
+        if unexpected else "configuration_matches_reviewed_scope"
+    ),
     "changed": differences,
+    "unexpected": unexpected,
     "module_signature_protection_retained": True,
     "root_framework_added": False,
     "runtime_compatibility_verified": False,
 }
 Path(sys.argv[2]).write_text(json.dumps(report, indent=2) + "\n")
 print(json.dumps(report, indent=2))
+if unexpected:
+    raise RuntimeError(f"Unexpected kernel options changed: {unexpected}")

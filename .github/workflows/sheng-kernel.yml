@@ -21,7 +21,8 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            bc bison flex libssl-dev libelf-dev lz4 dwarves rsync
+            bc bison flex libssl-dev libelf-dev lz4 dwarves rsync \
+            gcc-aarch64-linux-gnu libc6-dev-arm64-cross
           sudo fallocate -l 8G /mnt/sheng-kernel.swap
           sudo chmod 600 /mnt/sheng-kernel.swap
           sudo mkswap /mnt/sheng-kernel.swap

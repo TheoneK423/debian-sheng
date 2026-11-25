@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      KERNEL_WORK_DIR: ${{ runner.temp }}/sheng-kernel
+      KERNEL_WORK_DIR: kernel-work
       KERNEL_JOBS: "4"
       KERNEL_LINK_JOBS: "2"
     steps:
@@ -40,7 +40,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sheng-configuration-review
-          path: ${{ runner.temp }}/sheng-kernel/dist
+          path: kernel-work/dist
           retention-days: 14
       - name: Compile the pinned kernel with ThinLTO
         timeout-minutes: 45
@@ -50,6 +50,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sheng-droidspaces-kernel
-          path: ${{ runner.temp }}/sheng-kernel/dist
+          path: kernel-work/dist
           if-no-files-found: warn
           retention-days: 14

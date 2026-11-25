@@ -50,6 +50,8 @@ for option in [
     "DEVTMPFS", "USER_NS",
 ]:
     subprocess.run(config + ["--enable", option], check=True)
+subprocess.run(config + ["--disable", "LTO_CLANG_FULL"], check=True)
+subprocess.run(config + ["--enable", "LTO_CLANG_THIN"], check=True)
 subprocess.run(
     config + ["--set-str", "SYSTEM_TRUSTED_KEYS", "stock-public-cert.pem"],
     check=True,

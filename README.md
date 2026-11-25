@@ -14,8 +14,10 @@ DroidSpaces ABI-padding patch keeps the SYSVIPC fields within reserved
 The existing Magisk installation lives in init_boot and is not replaced.
 No KernelSU, SukiSU, ReSukiSU, overclock or scheduler patches are included.
 
-Module version checks, CFI, full LTO and GKI module signature protection remain
-enabled. The stock kernel's public module-verification certificate is retained
+Module version checks, CFI, LTO and GKI module signature protection remain
+enabled. ThinLTO replaces the stock full LTO to reduce build memory pressure;
+the two option changes are included in the configuration review. ThinLTO link
+workers are limited to two. The stock kernel's public module-verification certificate is retained
 as an additional trusted certificate. No private signing keys are uploaded or
 included in the build artifact.
 
@@ -24,6 +26,10 @@ In particular, the original system zram/zsmalloc modules are already loaded with
 the unsigned/unverified taint on the unchanged running kernel. Retaining the
 original certificate preserves the original trust anchor; it does not claim to
 repair those existing signatures or prove runtime compatibility.
+
+The workflow saves its configuration review before compilation. The build logs
+memory usage and linker process statistics every minute and includes those logs
+with the final artifact. A stopped build is not treated as a usable kernel.
 
 Before using any output:
 

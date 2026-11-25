@@ -22,12 +22,15 @@ after = parse(sys.argv[1])
 required = [
     "SYSVIPC", "POSIX_MQUEUE", "IPC_NS", "PID_NS", "DEVTMPFS", "USER_NS",
     "MODVERSIONS", "MODULE_SIG", "MODULE_SIG_PROTECT", "CFI_CLANG",
-    "LTO_CLANG_FULL", "CGROUP_FREEZER", "MEMCG",
+    "LTO_CLANG_THIN", "CGROUP_FREEZER", "MEMCG",
 ]
 for name in required:
     if after.get(f"CONFIG_{name}") != "y":
         raise RuntimeError(f"Required configuration is missing: {name}")
-for name in ["CGROUP_PIDS", "CFS_BANDWIDTH", "CFI_PERMISSIVE", "KSU", "KERNELSU"]:
+for name in [
+    "CGROUP_PIDS", "CFS_BANDWIDTH", "CFI_PERMISSIVE", "KSU", "KERNELSU",
+    "LTO_CLANG_FULL", "LTO_NONE",
+]:
     if after.get(f"CONFIG_{name}", "n") != "n":
         raise RuntimeError(f"Unexpected option: {name}")
 allowed = {
@@ -37,6 +40,7 @@ allowed = {
     "CONFIG_USER_NS", "CONFIG_DEVTMPFS_MOUNT", "CONFIG_DEVTMPFS_SAFE",
     "CONFIG_SYSTEM_TRUSTED_KEYS", "CONFIG_UNUSED_KSYMS_WHITELIST",
     "CONFIG_PAHOLE_VERSION",
+    "CONFIG_LTO_CLANG_FULL", "CONFIG_LTO_CLANG_THIN",
 }
 differences = {
     key: {"before": before.get(key, "n"), "after": after.get(key, "n")}
@@ -53,6 +57,7 @@ report = {
     "unexpected": unexpected,
     "module_signature_protection_retained": True,
     "root_framework_added": False,
+    "lto_mode": "thin; CFI and module protections retained",
     "runtime_compatibility_verified": False,
 }
 Path(sys.argv[2]).write_text(json.dumps(report, indent=2) + "\n")

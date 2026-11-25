@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+phase="${1:-all}"
+case "$phase" in all|prepare|build) ;; *) exit 2 ;; esac
 inputs="$(cd "$(dirname "$0")" && pwd)"
 work="${KERNEL_WORK_DIR:-$PWD/kernel-work}"
 mkdir -p "$work"
@@ -38,7 +40,9 @@ fi
 test "$(git -C "$toolchain" rev-parse HEAD)" = "${pins[3]}"
 export PATH="$toolchain/${pins[4]}/bin:$PATH"
 clang --version
-python3 "$inputs/configure.py" "$common" "$out"
+if [[ "$phase" != "build" ]]; then
+    python3 "$inputs/configure.py" "$common" "$out"
+fi
 
 export KBUILD_BUILD_USER=milinux
 export KBUILD_BUILD_HOST=sheng-kernel-prep
@@ -47,11 +51,44 @@ make_args=(
     -C "$common" "O=$out" ARCH=arm64 LLVM=1 LLVM_IAS=1
     HOSTCC=clang HOSTCXX=clang++ HOSTLDFLAGS=-fuse-ld=lld
     KCFLAGS=-D__ANDROID_COMMON_KERNEL__
+    "LD=ld.lld --thinlto-jobs=${KERNEL_LINK_JOBS:-2}"
 )
-make "${make_args[@]}" olddefconfig
+if [[ "$phase" != "build" ]]; then
+    make "${make_args[@]}" olddefconfig
+fi
 cp "$out/.config" "$dist/kernel.config"
+cp "$inputs/sources.json" "$dist/sources.json"
 python3 "$inputs/verify_config.py" "$out/.config" "$dist/config-review.json"
-make "${make_args[@]}" "-j${KERNEL_JOBS:-4}" Image Image.gz modules
+if [[ "$phase" == "prepare" ]]; then
+    exit 0
+fi
+
+(
+    while true; do
+        {
+            printf '\n[build resources %s]\n' "$(date -u +%FT%TZ)"
+            free -m
+            ps -eo pid,ppid,comm,etime,pcpu,rss --sort=-rss | sed -n '1,9p'
+            for entry in memory.current memory.max memory.swap.max memory.events; do
+                if [[ -r "/sys/fs/cgroup/$entry" ]]; then
+                    printf '%s: ' "$entry"
+                    cat "/sys/fs/cgroup/$entry"
+                fi
+            done
+        } | tee -a "$dist/resources.log"
+        sleep 60
+    done
+) &
+monitor=$!
+stop_monitor() {
+    kill "$monitor" 2>/dev/null || true
+    wait "$monitor" 2>/dev/null || true
+}
+trap stop_monitor EXIT
+/usr/bin/time -v make "${make_args[@]}" "-j${KERNEL_JOBS:-4}" \
+    Image Image.gz modules 2>&1 | tee "$dist/build.log"
+stop_monitor
+trap - EXIT
 
 cp "$out/arch/arm64/boot/Image" "$dist/Image"
 cp "$out/arch/arm64/boot/Image.gz" "$dist/Image.gz"
@@ -61,7 +98,7 @@ cp "$out/include/config/kernel.release" "$dist/kernel.release"
 cp "$inputs/sources.json" "$dist/sources.json"
 cp "$inputs/inputs/stock-public-cert.pem" "$dist/stock-public-cert.pem"
 pahole -C task_struct "$out/vmlinux" > "$dist/task_struct.txt"
-openssl x509 -in "$common/certs/signing_key.x509" -inform DER -out "$dist/build-public-cert.pem"
+openssl x509 -in "$out/certs/signing_key.x509" -inform DER -out "$dist/build-public-cert.pem"
 python3 - "$dist" <<'PY'
 import hashlib, json, pathlib, sys
 root = pathlib.Path(sys.argv[1])
